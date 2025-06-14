@@ -34,12 +34,20 @@ ore_fasce = [
     st.text_input("Aperitivo", "18:00-21:00")
 ]
 
+durata_fasce = [2, ore_brunch, 2, 3]  # ore stimate per ogni fascia
+
+totore = sum(durata_fasce)
+quota_oraria = [d / totore for d in durata_fasce]
+
+coperti_totali_giornalieri = posti_a_sedere * ore_totali * revpash / scontrino_medio
+coperti_fasce = [coperti_totali_giornalieri * q for q in quota_oraria]
+
 coperti_pct_values = []
 coperti_cols = st.columns(4)
 for i, fascia in enumerate(fasce):
     with coperti_cols[i]:
         pct = st.number_input(f"% Coperti {fascia}", min_value=0, max_value=100, value=[40, 60, 40, 50][i], step=5)
-        coperti_pct_values.append(pct)
+        coperti_pct_values.append(pct / 100)
 
 atv_values = []
 atv_cols = st.columns(4)
@@ -48,20 +56,12 @@ for i, fascia in enumerate(fasce):
         val = st.number_input(f"ATV {fascia} (€)", min_value=0.0, value=[10.0, 25.0, 10.0, 12.5][i], step=0.5)
         atv_values.append(val)
 
-coperti_brunch = revpash * ore_brunch * posti_a_sedere
-coperti_totali = sum([(coperti_pct_values[i] / 100) * posti_a_sedere for i in range(4)])
+coperti_effettivi = [coperti_fasce[i] * coperti_pct_values[i] for i in range(4)]
+ricavi_fasce = [coperti_effettivi[i] * atv_values[i] for i in range(4)]
 
-ricavi_fasce = []
-for i in range(4):
-    coperti = (coperti_pct_values[i] / 100) * posti_a_sedere
-    ricavi = coperti * atv_values[i]
-    ricavi_fasce.append(ricavi)
-
-ricavi_giornalieri_brunch = coperti_brunch * scontrino_medio
 ricavi_giornalieri_totali = sum(ricavi_fasce)
 ricavi_annui = ricavi_giornalieri_totali * 365
-coperti_annui = coperti_totali * 365
-
+coperti_annui = sum(coperti_effettivi) * 365
 revpasm = ricavi_giornalieri_totali / mq_somministrazione
 
 costo_materie_prime = ricavi_annui * (food_cost_pct / 100)
@@ -72,15 +72,15 @@ ebitda = ricavi_annui - costo_materie_prime - costo_personale - costi_opex
 ebitda_pct = (ebitda / ricavi_annui) * 100 if ricavi_annui > 0 else 0
 
 # Tabella riassuntiva
-fasce_data = {
+df_fasce = pd.DataFrame({
     "Fasce Orarie": fasce,
     "Ore": ore_fasce,
-    "% Coperti": coperti_pct_values,
+    "Durata (h)": durata_fasce,
+    "% Coperti": [int(v * 100) for v in coperti_pct_values],
     "ATV (€)": atv_values,
-    "Coperti": [(coperti_pct_values[i] / 100) * posti_a_sedere for i in range(4)],
+    "Coperti": coperti_effettivi,
     "Ricavi": ricavi_fasce
-}
-df_fasce = pd.DataFrame(fasce_data)
+})
 
 st.dataframe(df_fasce.style.format({"% Coperti": "{:.0f}%", "ATV (€)": "{:.2f}", "Coperti": "{:.0f}", "Ricavi": "{:.0f}"}))
 
@@ -89,15 +89,11 @@ st.header("📉 KPI Calcolati")
 
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
-    st.metric("Coperti Giornalieri Brunch", f"{coperti_brunch:.0f}")
-    st.metric("Coperti Totali Giornalieri", f"{coperti_totali:.0f}")
-    st.metric("Ricavi Giornalieri Brunch (€)", f"{ricavi_giornalieri_brunch:,.0f}")
-
+    st.metric("Coperti Totali Giornalieri", f"{sum(coperti_effettivi):.0f}")
+    st.metric("Coperti Annui", f"{coperti_annui:,.0f}")
 with kpi2:
     st.metric("Ricavi Giornalieri Totali (€)", f"{ricavi_giornalieri_totali:,.0f}")
     st.metric("Ricavi Annui Totali (€)", f"{ricavi_annui:,.0f}")
-    st.metric("Coperti Annui", f"{coperti_annui:,.0f}")
-
 with kpi3:
     st.metric("RevPASM (€ / mq / giorno)", f"{revpasm:.2f} €/mq")
     st.metric("EBITDA (€)", f"{ebitda:,.0f}")
