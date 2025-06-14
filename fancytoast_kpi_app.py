@@ -1,12 +1,49 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Fancytoast KPI Simulator", layout="wide")
+st.set_page_config(page_title="Fancytoast KPI Simulator – CTR & KPI", layout="wide")
 
-st.title("📊 Fancytoast KPI Simulator – CTR & Distribuzione % Coperti")
-st.caption("Stima coperti giornalieri con CTR per fascia e distribuzione % configurabile")
+st.title("📊 Fancytoast KPI Simulator – CTR & KPI")
+st.caption("Simula l’efficienza operativa del tuo punto vendita Fancytoast")
 
-# ------------------ Input base ------------------
+# ------------------ ISTRUZIONI ------------------
+with st.expander("ℹ️ Come funziona il simulatore"):
+    st.markdown("""
+    Questo strumento ti permette di simulare l’andamento economico di un punto vendita **Fancytoast**, configurando:
+
+    - 🪑 **Posti a sedere**
+    - ⏰ **Fasce orarie operative**
+    - 🔁 **CTR (Cover Turnover Rate)** per fascia → quante volte ogni posto viene utilizzato
+    - 📊 **Incidenza % coperti per fascia**
+    - 💶 **ATV (Average Ticket Value)** per fascia → scontrino medio stimato
+
+    ---
+    🔢 Il sistema calcola:
+    - 👥 Coperti giornalieri totali e per fascia
+    - 💰 Ricavi giornalieri e annui
+    - 📈 RevPASH per fascia e medio (€/posto/ora)
+    - 📏 RevPASM: € per metro quadro di somministrazione al giorno
+    - 📉 EBITDA assoluto e in %
+
+    Puoi personalizzare ogni voce e osservare in tempo reale l’impatto sulle performance.
+    """)
+
+with st.expander("📘 Legenda KPI"):
+    st.markdown("""
+    - **Coperti Giornalieri Totali** → somma dei coperti generati in tutte le fasce orarie
+    - **Coperti Annui** → coperti giornalieri × 365
+    - **Ricavi Giornalieri / Annui** → somma dei ricavi stimati per fascia
+    - **Scontrino Medio Generale (€)** → media ponderata degli ATV in base ai coperti
+    - **RevPASH per fascia (€)** → Ricavi fascia / (Posti × Ore fascia)
+    - **RevPASH Medio (€)** → Ricavi totali / (Posti × Ore apertura)
+    - **RevPASM (€ / mq / giorno)** → Ricavi totali / Metri quadri somministrazione
+    - **EBITDA (€)** → Ricavi annui – Costi Food – Costi Labor – OPEX
+    - **EBITDA %** → Margine operativo lordo in % sui ricavi
+
+    Tutti i calcoli si aggiornano automaticamente quando modifichi i parametri nella colonna sinistra.
+    """)
+
+# ------------------ INPUT ------------------
 st.sidebar.header("🔧 Parametri di base")
 posti = st.sidebar.number_input("Posti a sedere", min_value=10, max_value=200, value=70)
 food_cost = st.sidebar.slider("Food Cost (%)", 0, 100, 27)
