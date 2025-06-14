@@ -1,100 +1,92 @@
 import streamlit as st
 import pandas as pd
+from datetime import time
 
-st.set_page_config(page_title="Fancytoast KPI Simulator", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Fancytoast KPI Simulator", layout="wide")
 
-st.title("\U0001F4C8 Fancytoast KPI Simulator")
-st.write("Simula le performance economiche modificando i parametri di input")
+st.title("📊 Fancytoast KPI Simulator")
+st.caption("Versione aggiornata con fasce orarie sovrapposte e RevPASH calcolato automaticamente")
 
-st.markdown("---")
-st.header("🛠️ Parametri di Input")
+# ------------------ Input base ------------------
+st.sidebar.header("🔧 Parametri di base")
+posti = st.sidebar.number_input("Posti a sedere", min_value=10, max_value=200, value=70)
+ore_totali = st.sidebar.number_input("Ore di apertura giornaliera", min_value=1, max_value=24, value=12)
+scontrino_medio = st.sidebar.number_input("Scontrino medio generale (€)", min_value=1.0, value=25.0)
+food_cost = st.sidebar.slider("Food Cost (%)", 0, 100, 27)
+labor_cost = st.sidebar.slider("Labor Cost (%)", 0, 100, 32)
+opex = st.sidebar.slider("OPEX (%)", 0, 100, 20)
+mq = st.sidebar.number_input("Metri quadri somministrazione", min_value=10, value=100)
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    revpash = st.number_input("RevPASH (€)", min_value=0.0, value=5.0, step=0.5)
-    scontrino_medio = st.number_input("Scontrino medio (€)", min_value=0.0, value=25.0, step=1.0)
-    food_cost_pct = st.number_input("Food Cost (%)", min_value=0, max_value=100, value=27, step=1)
-with col2:
-    ore_brunch = st.number_input("Ore operative brunch", min_value=1, max_value=24, value=6)
-    posti_a_sedere = st.number_input("Posti a sedere", min_value=1, value=70)
-    labor_cost_pct = st.number_input("Labor Cost (%)", min_value=0, max_value=100, value=32, step=1)
-with col3:
-    opex_pct = st.number_input("OPEX (%)", min_value=0, max_value=100, value=20, step=1)
-    mq_somministrazione = st.number_input("Metri quadri somministrazione", min_value=1, value=100)
-    ore_totali = st.number_input("Ore di apertura giornaliera", min_value=1, max_value=24, value=13)
-
-st.markdown("---")
-st.header("⏰ Calcolo Totale Giornaliero dalle Fasce Orarie")
+# ------------------ Fasce orarie ------------------
+st.subheader("⏰ Definizione Fasce Orarie")
 
 fasce = ["Mattino", "Brunch", "Snack", "Aperitivo"]
-ore_fasce = [
-    st.text_input("Mattino", "8:00-10:00"),
-    "10:00-16:00",  # brunch fisso
-    st.text_input("Snack", "16:00-18:00"),
-    st.text_input("Aperitivo", "18:00-21:00")
-]
+default_orari = [(8, 12), (10, 16), (16, 18), (18, 21)]
+default_atv = [10.0, 25.0, 10.0, 12.5]
+default_pesi = [20, 60, 10, 10]
 
-durata_fasce = [2, ore_brunch, 2, 3]  # ore stimate per ogni fascia
-
-totore = sum(durata_fasce)
-quota_oraria = [d / totore for d in durata_fasce]
-
-coperti_totali_giornalieri = posti_a_sedere * ore_totali * revpash / scontrino_medio
-coperti_fasce = [coperti_totali_giornalieri * q for q in quota_oraria]
-
-coperti_pct_values = []
-coperti_cols = st.columns(4)
+inputs = []
 for i, fascia in enumerate(fasce):
-    with coperti_cols[i]:
-        pct = st.number_input(f"% Coperti {fascia}", min_value=0, max_value=100, value=[40, 60, 40, 50][i], step=5)
-        coperti_pct_values.append(pct / 100)
+    with st.expander(f"{fascia}"):
+        col1, col2 = st.columns(2)
+        inizio = col1.number_input(f"Orario inizio {fascia}", min_value=0, max_value=23, value=default_orari[i][0], key=f"i_{i}")
+        fine = col2.number_input(f"Orario fine {fascia}", min_value=1, max_value=24, value=default_orari[i][1], key=f"f_{i}")
+        durata = fine - inizio if fine > inizio else 0
+        atv = st.number_input(f"ATV {fascia} (€)", min_value=0.0, value=default_atv[i], step=0.5, key=f"atv_{i}")
+        peso = st.slider(f"Incidenza % coperti {fascia}", 0, 100, default_pesi[i], key=f"peso_{i}")
+        inputs.append({
+            "fascia": fascia,
+            "inizio": inizio,
+            "fine": fine,
+            "durata": durata,
+            "atv": atv,
+            "peso_pct": peso
+        })
 
-atv_values = []
-atv_cols = st.columns(4)
-for i, fascia in enumerate(fasce):
-    with atv_cols[i]:
-        val = st.number_input(f"ATV {fascia} (€)", min_value=0.0, value=[10.0, 25.0, 10.0, 12.5][i], step=0.5)
-        atv_values.append(val)
+# ------------------ Calcoli ------------------
+df = pd.DataFrame(inputs)
+df["peso_norm"] = df["peso_pct"] / df["peso_pct"].sum()  # normalizzato su 100%
+coperti_totali = posti * ore_totali  # ipotesi di massima rotazione
+df["coperti"] = coperti_totali * df["peso_norm"]
+df["ricavi"] = df["coperti"] * df["atv"]
 
-coperti_effettivi = [coperti_fasce[i] * coperti_pct_values[i] for i in range(4)]
-ricavi_fasce = [coperti_effettivi[i] * atv_values[i] for i in range(4)]
+ricavi_giornalieri = df["ricavi"].sum()
+ricavi_annui = ricavi_giornalieri * 365
+coperti_annui = df["coperti"].sum() * 365
+revpash = ricavi_giornalieri / (posti * ore_totali)
+revpasm = ricavi_giornalieri / mq
 
-ricavi_giornalieri_totali = sum(ricavi_fasce)
-ricavi_annui = ricavi_giornalieri_totali * 365
-coperti_annui = sum(coperti_effettivi) * 365
-revpasm = ricavi_giornalieri_totali / mq_somministrazione
+ebitda_val = ricavi_annui * (1 - (food_cost + labor_cost + opex)/100)
+ebitda_pct = (ebitda_val / ricavi_annui) * 100 if ricavi_annui > 0 else 0
 
-costo_materie_prime = ricavi_annui * (food_cost_pct / 100)
-costo_personale = ricavi_annui * (labor_cost_pct / 100)
-costi_opex = ricavi_annui * (opex_pct / 100)
+# ------------------ Output ------------------
+st.subheader("📋 Tabella Fasce Orarie")
+st.dataframe(df[["fascia", "inizio", "fine", "durata", "atv", "peso_pct", "coperti", "ricavi"]]
+             .rename(columns={
+                 "fascia": "Fascia",
+                 "inizio": "Ora Inizio",
+                 "fine": "Ora Fine",
+                 "durata": "Durata (h)",
+                 "atv": "ATV (€)",
+                 "peso_pct": "% Incidenza",
+                 "coperti": "Coperti",
+                 "ricavi": "Ricavi (€)"
+             }).style.format({
+                 "Coperti": "{:.0f}",
+                 "Ricavi (€)": "€{:.0f}",
+                 "ATV (€)": "€{:.2f}",
+                 "% Incidenza": "{:.0f}%"
+             }), use_container_width=True)
 
-ebitda = ricavi_annui - costo_materie_prime - costo_personale - costi_opex
-ebitda_pct = (ebitda / ricavi_annui) * 100 if ricavi_annui > 0 else 0
-
-# Tabella riassuntiva
-df_fasce = pd.DataFrame({
-    "Fasce Orarie": fasce,
-    "Ore": ore_fasce,
-    "Durata (h)": durata_fasce,
-    "% Coperti": [int(v * 100) for v in coperti_pct_values],
-    "ATV (€)": atv_values,
-    "Coperti": coperti_effettivi,
-    "Ricavi": ricavi_fasce
-})
-
-st.dataframe(df_fasce.style.format({"% Coperti": "{:.0f}%", "ATV (€)": "{:.2f}", "Coperti": "{:.0f}", "Ricavi": "{:.0f}"}))
-
-st.markdown("---")
-st.header("📉 KPI Calcolati")
-
-kpi1, kpi2, kpi3 = st.columns(3)
-with kpi1:
-    st.metric("Coperti Totali Giornalieri", f"{sum(coperti_effettivi):.0f}")
+st.subheader("📈 KPI Calcolati")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Ricavi Giornalieri (€)", f"{ricavi_giornalieri:,.0f}")
+    st.metric("Ricavi Annui (€)", f"{ricavi_annui:,.0f}")
     st.metric("Coperti Annui", f"{coperti_annui:,.0f}")
-with kpi2:
-    st.metric("Ricavi Giornalieri Totali (€)", f"{ricavi_giornalieri_totali:,.0f}")
-    st.metric("Ricavi Annui Totali (€)", f"{ricavi_annui:,.0f}")
-with kpi3:
-    st.metric("RevPASM (€ / mq / giorno)", f"{revpasm:.2f} €/mq")
-    st.metric("EBITDA (€)", f"{ebitda:,.0f}")
+with col2:
+    st.metric("RevPASH (€)", f"{revpash:.2f}")
+    st.metric("RevPASM (€ / mq / giorno)", f"{revpasm:.2f}")
+with col3:
+    st.metric("EBITDA (€)", f"{ebitda_val:,.0f}")
     st.metric("EBITDA %", f"{ebitda_pct:.1f}%")
