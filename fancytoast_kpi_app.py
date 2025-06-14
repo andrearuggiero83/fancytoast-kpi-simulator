@@ -1,63 +1,83 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+from PIL import Image
 
 st.set_page_config(page_title="Fancytoast KPI Simulator", layout="wide")
 
+# Logo
+logo = Image.open("LOGO_Fancytoast.png")
+st.image(logo, width=300)
+
 st.title("📊 Fancytoast KPI Simulator")
-st.write("Simula le performance economiche modificando i parametri di input")
+st.markdown("Simula le performance economiche modificando i parametri di input")
 
+# -------------------- INPUT -------------------- #
 st.header("🛠️ Parametri di Input")
-
 col1, col2, col3 = st.columns(3)
+
 with col1:
-    revpash = st.number_input("RevPASH (€)", value=5.00, step=0.5)
-    scontrino_medio = st.number_input("Scontrino medio (€)", value=25.0, step=1.0)
-    food_cost = st.number_input("Food Cost (%)", value=27, step=1)
+    revpash = st.number_input("RevPASH (€)", min_value=1.0, value=5.0, step=0.1)
+    avg_ticket = st.number_input("Scontrino medio (€)", min_value=5.0, value=25.0, step=0.5)
+    food_cost = st.number_input("Food Cost (%)", min_value=0, max_value=100, value=27)
+
 with col2:
-    ore_brunch = st.number_input("Ore operative brunch", value=6, step=1)
-    posti_sedere = st.number_input("Posti a sedere", value=70, step=1)
-    labor_cost = st.number_input("Labor Cost (%)", value=32, step=1)
+    brunch_hours = st.number_input("Ore operative brunch", min_value=1, max_value=12, value=6)
+    seats = st.number_input("Posti a sedere", min_value=1, max_value=200, value=70)
+    labor_cost = st.number_input("Labor Cost (%)", min_value=0, max_value=100, value=32)
+
 with col3:
-    opex = st.number_input("OPEX (%)", value=20, step=1)
+    opex = st.number_input("OPEX (%)", min_value=0, max_value=100, value=20)
 
-st.divider()
-st.subheader("⏰ Calcolo Totale Giornaliero dalle Fasce Orarie")
+# -------------------- FASCE ORARIE -------------------- #
+st.header("🕒 Calcolo Totale Giornaliero dalle Fasce Orarie")
+fasce_orarie = ["Mattino", "Brunch", "Snack", "Aperitivo"]
+ore = ["8,00 -10,00", "10,00-16,00", "16,00-18,00", "18,00-21,00"]
 
-fasce = pd.DataFrame({
-    "Fasce Orarie": ["Mattino", "Brunch", "Snack", "Aperitivo"],
-    "Ore": ["8,00 -10,00", "10,00-16,00", "16,00-18,00", "18,00-21,00"],
-    "% Coperti": [0.4, 0.6, 0.4, 0.5],
-    "ATV": [10, 25, 10, 12.5],
+percentuali = []
+atv_values = []
+
+col1, col2 = st.columns(2)
+with col1:
+    percentuali = [st.number_input(f"% Coperti {f}", min_value=0.0, max_value=1.0, value=val, step=0.1)
+                   for f, val in zip(fasce_orarie, [0.4, 0.6, 0.4, 0.5])]
+with col2:
+    atv_values = [st.number_input(f"ATV {f} (€)", min_value=0.0, value=val, step=0.5)
+                  for f, val in zip(fasce_orarie, [10, 25, 10, 12.5])]
+
+coperti_brunch = int(seats * brunch_hours * (revpash / avg_ticket))
+coperti_fasce = [int(p * coperti_brunch) for p in percentuali]
+ricavi_fasce = [round(c * a, 2) for c, a in zip(coperti_fasce, atv_values)]
+
+fasce_df = pd.DataFrame({
+    "Fasce Orarie": fasce_orarie,
+    "Ore": ore,
+    "% Coperti": percentuali,
+    "ATV (€)": atv_values,
+    "Coperti": coperti_fasce,
+    "Ricavi (€)": ricavi_fasce
 })
 
-fasce_edit = st.data_editor(fasce, num_rows="fixed", use_container_width=True)
+st.dataframe(fasce_df, use_container_width=True)
 
-fasce_edit["Coperti"] = (fasce_edit["% Coperti"] * posti_sedere).round()
-fasce_edit["Ricavi"] = (fasce_edit["Coperti"] * fasce_edit["ATV"]).round()
+# -------------------- KPI CALCOLATI -------------------- #
+ricavi_totali_giornalieri = sum(ricavi_fasce)
+coperti_giornalieri_totali = sum(coperti_fasce)
+ricavi_annui = ricavi_totali_giornalieri * 365
+coperti_annui = coperti_giornalieri_totali * 365
+revpasm = ricavi_totali_giornalieri / 60  # mq fissi
 
-coperti_brunch = int(fasce_edit.loc[fasce_edit["Fasce Orarie"] == "Brunch", "Coperti"].values[0])
-ricavi_brunch = int(fasce_edit.loc[fasce_edit["Fasce Orarie"] == "Brunch", "Ricavi"].values[0])
-coperti_tot = int(fasce_edit["Coperti"].sum())
-ricavi_tot = int(fasce_edit["Ricavi"].sum())
-coperti_annui = int(coperti_tot * 365)
-ricavi_annui = int(ricavi_tot * 365)
+# Margini
+ebitda = ricavi_annui * (1 - food_cost/100 - labor_cost/100 - opex/100)
+ebitda_perc = ebitda / ricavi_annui * 100
 
-revpasm = ricavi_tot / 60  # 60 mq fissi
-ebitda_val = ricavi_annui * (1 - (food_cost + labor_cost + opex) / 100)
-ebitda_pct = (ebitda_val / ricavi_annui) * 100
-
-st.divider()
-st.subheader("📈 KPI Calcolati")
-col_a, col_b, col_c = st.columns(3)
-with col_a:
-    st.metric("Coperti Giornalieri Brunch", coperti_brunch)
-    st.metric("Coperti Totali Giornalieri", coperti_tot)
-    st.metric("Ricavi Giornalieri Brunch (€)", f"{ricavi_brunch:,}".replace(",", "."))
-with col_b:
-    st.metric("Ricavi Giornalieri Totali (€)", f"{ricavi_tot:,}".replace(",", "."))
-    st.metric("Ricavi Annui Totali (€)", f"{ricavi_annui:,}".replace(",", "."))
-    st.metric("Coperti Annui", f"{coperti_annui:,}".replace(",", "."))
-with col_c:
-    st.metric("RevPASM (€ / mq / giorno)", f"{revpasm:.2f} €/mq")
-    st.metric("EBITDA (€)", f"{ebitda_val:,.0f}".replace(",", "."))
-    st.metric("EBITDA %", f"{ebitda_pct:.1f}%")
+st.header("📈 KPI Calcolati")
+st.metric("Coperti Giornalieri Brunch", coperti_brunch)
+st.metric("Coperti Totali Giornalieri", coperti_giornalieri_totali)
+st.metric("Ricavi Giornalieri Brunch (€)", round(coperti_brunch * avg_ticket, 2))
+st.metric("Ricavi Giornalieri Totali (€)", round(ricavi_totali_giornalieri, 2))
+st.metric("Ricavi Annui Totali (€)", f"{ricavi_annui:,.0f}".replace(",", "."))
+st.metric("Coperti Annui", f"{coperti_annui:,.0f}".replace(",", "."))
+st.metric("RevPASM (€ / mq / giorno)", f"{revpasm:.2f} €/mq")
+st.metric("EBITDA (€)", f"{ebitda:,.0f}".replace(",", "."))
+st.metric("EBITDA %", f"{ebitda_perc:.1f}%")
